@@ -1,42 +1,32 @@
-name: Publish on Docker Hub and Deploy
+name: Python test
 
-on:
-  release:
-    types: [published]
+on: [push]
 
 jobs:
-  run_pub_tests:
-    runs-on: [self-hosted]
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+
     steps:
-      - uses: actions/checkout@master
-      - uses: actions/setup-python@v1
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
         with:
-          python-version: '3.9'
-          architecture: 'arm'
-      - name: Install requirements
-        run: pip install -r requirements.txt
-      - name: echo workspace
-        run: echo $GITHUB_WORKSPACE
-        shell: bash
-      - name: Run tests
-        run: coverage run src/app_test.py
-      - name: Tests report
-        run: coverage report
-  build_and_pub:
-    needs: [run_pub_tests]
-    runs-on: [self-hosted]
-    env:
-      LOGIN: ${{ secrets.DOCKER_LOGIN }}
-      NAME: ${{ secrets.DOCKER_NAME }}
-    steps:
-      - name: Login to docker.io
-        run:  echo ${{ secrets.DOCKER_PWD }} | docker login --username ${{ secrets.DOCKER_LOGIN }} --password-stdin
-      - uses: actions/checkout@master
-      - name: Build image
-        run: docker build -t $LOGIN/$NAME:${GITHUB_REF:10} -f Dockerfile .
-      - name: Push image tag to docker.io
-        run: docker push $LOGIN/$NAME:${GITHUB_REF:10}
-      - name: Tag last release as latest
-        run: docker tag $LOGIN/$NAME:${GITHUB_REF:10} $LOGIN/$NAME:latest
-      - name: Push image tag latest to docker.io
-        run: docker push $LOGIN/$NAME:latest
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Test with pytest
+        run: |
+          pytest
